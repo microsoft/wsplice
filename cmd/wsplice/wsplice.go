@@ -15,6 +15,8 @@ import (
 	"gopkg.in/alecthomas/kingpin.v2"
 )
 
+var version = "master" // overwritten by goreleaser
+
 var (
 	host             = kingpin.Flag("listen", "Host and port to listen on.").Default("127.0.0.1:3000").String()
 	network          = kingpin.Flag("network", "Network to listen on, should be either 'tcp' or 'tcp6' for IPv6 support").Default("tcp").String()
@@ -33,6 +35,7 @@ var (
 )
 
 func main() {
+	kingpin.Version(version)
 	kingpin.Parse()
 
 	var (
