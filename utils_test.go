@@ -57,7 +57,7 @@ func (e *EndToEndSuite) expectRead(cnx *websocket.Conn, index int, expected stri
 	_, b, err := cnx.ReadMessage()
 
 	e.expectNoerr(err)
-	require.Equal(e.T(), prefix, b[:len(prefix)], "Got invalid prefix in message:", string(b))
+	require.Equal(e.T(), prefix, b[:len(prefix)], "Got invalid prefix in message: %s", string(b))
 	actual := string(b[len(prefix):])
 
 	if expected[0] == '{' {
@@ -120,7 +120,7 @@ func forever(fn func(conn *websocket.Conn) error) func(conn *websocket.Conn) err
 	return func(c *websocket.Conn) error {
 		for {
 			if err := fn(c); err != nil {
-				return err
+				return nil
 			}
 		}
 	}

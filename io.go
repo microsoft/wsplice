@@ -6,24 +6,18 @@ import (
 	"github.com/gobwas/ws"
 )
 
-// CountingReader is an io.LimitReader that reports the number
-// of bytes that have been read from it.
-type CountingReader interface {
-	io.Reader
-	// BytesRead returns the number of bytes this reader has read so far.
-	BytesRead() int64
-	// BytesRead returns the number of bytes this reader has yet to read.
-	BytesLeft() int64
-	// ReadAll reads the remaining contents of the reader to a rawBuffer. It
-	// optionally takes a target rawBuffer to read into, which it may reallocate
-	// if it's not large enough.
-	ReadAll([]byte) ([]byte, error)
-}
-
 // Disposable is an interface that describes something that can optionally
 // be disposed of after it's no longer needed.
 type Disposable interface {
 	Dispose()
+}
+
+// Dispose calls a Disposable's Dispose() method, if the provided interface
+// implements Disposable.
+func Dispose(v interface{}) {
+	if disposable, ok := v.(Disposable); ok {
+		disposable.Dispose()
+	}
 }
 
 // MaskedReader wraps an io.Reader and deciphers the content.

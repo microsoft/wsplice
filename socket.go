@@ -109,9 +109,7 @@ func (s *Socket) CopyIndexedData(index int, header ws.Header, r io.Reader) (err 
 		_, err = io.CopyBuffer(s.Conn, r, s.buffer)
 	}
 
-	if disposable, ok := r.(Disposable); ok {
-		disposable.Dispose()
-	}
+	Dispose(r)
 
 	return err
 }
@@ -177,42 +175,39 @@ func NewFragmentCollector(header ws.Header, s *Socket) FragmentCollector {
 // Collect returns a reader for the fragmented websocket frame.
 func (f *FragmentCollector) Collect(maxSize int64) (header ws.Header, r io.Reader, err error) {
 	header = f.header
-	goto header
 
-start:
-	header, err = f.socket.ReadNextFrame()
-	if err != nil {
-		return header, nil, err
-	}
+	for {
+		if int64(f.buffer.Len())+header.Length > maxSize {
+			f.socket.WriteFrame(ws.NewCloseFrame(ws.StatusMessageTooBig, ""))
+			f.socket.Close()
+			return header, r, io.EOF
+		}
 
-header:
-	if int64(f.buffer.Len())+header.Length > maxSize {
-		f.socket.WriteFrame(ws.NewCloseFrame(ws.StatusMessageTooBig, ""))
-		f.socket.Close()
-		return header, r, io.EOF
-	}
+		var frameReader io.Reader
+		if header.Masked {
+			frameReader = NewMasked(&io.LimitedReader{R: f.socket.Reader, N: header.Length}, 0, header.Mask)
+		} else {
+			frameReader = io.LimitReader(f.socket.Reader, header.Length)
+		}
 
-	var frameReader io.Reader
-	if header.Masked {
-		frameReader = NewMasked(&io.LimitedReader{R: f.socket.Reader, N: header.Length}, 0, header.Mask)
-	} else {
-		frameReader = io.LimitReader(f.socket.Reader, header.Length)
-	}
+		if header.OpCode == ws.OpClose {
+			return header, frameReader, err
+		}
 
-	if header.OpCode == ws.OpClose {
-		return header, frameReader, err
-	}
+		if header.Fin {
+			header = f.header
+			header.Fin = true
+			header.Length = int64(f.buffer.Len()) + header.Length
+			return header, fragmentReader{io.MultiReader(f.buffer, frameReader), f.buffer}, err
+		}
 
-	if !header.Fin {
 		if _, err := f.buffer.ReadFrom(frameReader); err != nil {
 			return header, nil, err
 		}
 
-		goto start
+		header, err = f.socket.ReadNextFrame()
+		if err != nil {
+			return header, nil, err
+		}
 	}
-
-	header = f.header
-	header.Fin = true
-	header.Length = int64(f.buffer.Len()) + header.Length
-	return header, fragmentReader{io.MultiReader(f.buffer, frameReader), f.buffer}, err
 }

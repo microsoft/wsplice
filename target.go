@@ -14,7 +14,9 @@ type Target interface {
 }
 
 // RPCTarget is a target for an RPC call.
-type RPCTarget struct{ s *Session }
+type RPCTarget struct {
+	s *Session
+}
 
 // Pull implements Target.Pull. It reads the full RPC call off of the socket
 // and dispatches it on the session.
