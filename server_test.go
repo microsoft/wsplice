@@ -1,6 +1,11 @@
 package wsplice
 
-import "strings"
+import (
+	"math/rand"
+	"strings"
+
+	"github.com/stretchr/testify/require"
+)
 
 func (e *EndToEndSuite) TestErrorsSendingToNonexistentConnection() {
 	cnx := e.connectSocket()
@@ -20,6 +25,22 @@ func (e *EndToEndSuite) TestPingPong() {
 
 	e.servers[0].Close()
 	e.expectRead(cnx, 0xffff, `{"id":0,"type":"method","method":"onSocketClosed","params":{"code":1001,"reason":"","index":0}}`)
+}
+
+func (e *EndToEndSuite) TestHandlesFragmentedMessages() {
+	url := e.makeServer(echo)
+	cnx := e.connectSocket()
+
+	// Gorilla fragments messages at 64kb, a 400kb message will be split up.
+	// Make sure it can ping and pong!
+	data := make([]byte, 1024*400)
+	_, err := rand.Read(data)
+	require.Nil(e.T(), err)
+
+	e.write(cnx, 0xffff, `{"type":"method","method":"connect","params":{"url":"`+url+`"}}`)
+	e.expectRead(cnx, 0xffff, `{"id":0,"type":"reply","result":{"index":0}}`)
+	e.write(cnx, 0, string(data))
+	e.expectRead(cnx, 0, string(data))
 }
 
 func (e *EndToEndSuite) TestDisallowsHostsNotOnList() {

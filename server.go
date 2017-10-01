@@ -84,6 +84,7 @@ func (s *Session) Start() {
 	var (
 		err         error
 		header      ws.Header
+		target      Target
 		frameReader = &io.LimitedReader{R: s.Socket.Reader}
 	)
 
@@ -101,10 +102,12 @@ func (s *Session) Start() {
 			return
 		}
 
-		target, err := s.createTarget(&header, frameReader)
-		if err != nil {
-			s.handleError(err)
-			continue
+		if header.OpCode != ws.OpContinuation {
+			target, err = s.createTarget(&header, frameReader)
+			if err != nil {
+				s.handleError(err)
+				continue
+			}
 		}
 
 		if err := target.Pull(header, &s.Socket, frameReader); err != nil {
