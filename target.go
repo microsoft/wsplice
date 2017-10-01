@@ -11,54 +11,83 @@ import (
 // it internally. PushFrame can be called many times (for fragmented messages).
 type Target interface {
 	Pull(header ws.Header, socket *Socket, frame *io.LimitedReader) (err error)
+	Close()
 }
 
 // RPCTarget is a target for an RPC call.
 type RPCTarget struct {
-	s *Session
+	s          *Session
+	copyBuffer []byte
+	totalRead  int64
+	writer     *io.PipeWriter
 }
 
-// Pull implements Target.Pull. It reads the full RPC call off of the socket
-// and dispatches it on the session.
-func (r *RPCTarget) Pull(header ws.Header, socket *Socket, frame *io.LimitedReader) (err error) {
-	var reader io.Reader
-	if !header.Fin {
-		fc := NewFragmentCollector(header, socket)
-		header, reader, err = fc.Collect(r.s.config.FrameSizeLimit)
+// NewRPCTarget creates and returns a new target for the RPC call.
+func NewRPCTarget(copyBuffer []byte, s *Session) *RPCTarget {
+	reader, writer := io.Pipe()
+	r := &RPCTarget{
+		s:          s,
+		copyBuffer: copyBuffer,
+		writer:     writer,
+	}
+
+	go func() {
+		method, err := s.rpc.ReadMethodCall(reader)
+		defer reader.Close()
 		if err != nil {
-			return err
+			return
 		}
-	} else if header.Masked {
+		data, err := r.s.rpc.Dispatch(method)
+		if err != nil {
+			s.handleError(err)
+		} else {
+			s.SendControlFrame(data)
+		}
+	}()
+
+	return r
+}
+
+// Pull implements Target.Pull. It pipes the RPC call from the socket to the
+// RPC goroutine (kicked off in NewRPCTarget)
+func (r *RPCTarget) Pull(header ws.Header, socket *Socket, frame *io.LimitedReader) (err error) {
+	if r.totalRead+header.Length > socket.config.FrameSizeLimit {
+		socket.WriteFrame(ws.NewCloseFrame(ws.StatusMessageTooBig, ""))
+		socket.Close()
+		return io.EOF
+	}
+
+	var reader io.Reader
+	if header.Masked {
 		reader = NewMasked(frame, 0, header.Mask)
 	} else {
 		reader = frame
 	}
 
-	method, err := r.s.rpc.ReadMethodCall(reader)
+	n, err := io.CopyBuffer(r.writer, reader, r.copyBuffer)
 	if err != nil {
 		return err
 	}
+	r.totalRead += n
 
-	go func() {
-		data, err := r.s.rpc.Dispatch(method)
-		if err != nil {
-			r.s.handleError(err)
-		} else {
-			r.s.SendControlFrame(data)
-		}
-	}()
+	if header.Fin {
+		r.writer.Close()
+	}
 
 	return nil
 }
 
+// Close implements Target.Close.
+func (r *RPCTarget) Close() { r.writer.Close() }
+
 // ConnectionTarget is a target to write out the data to an external connection.
-type ConnectionTarget struct {
-	copyBuffer []byte
-	c          *Connection
-}
+type ConnectionTarget struct{ c *Connection }
 
 // Pull implements Target.Pull. It copies the frame to the target connection.
 func (c *ConnectionTarget) Pull(header ws.Header, _ *Socket, frame *io.LimitedReader) (err error) {
 	c.c.socket.CopyData(header, frame)
 	return
 }
+
+// Close implements Target.Close.
+func (c *ConnectionTarget) Close() {}

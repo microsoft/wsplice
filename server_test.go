@@ -1,7 +1,7 @@
 package wsplice
 
 import (
-	"math/rand"
+	"crypto/rand"
 	"strings"
 
 	"github.com/stretchr/testify/require"
@@ -54,7 +54,7 @@ func (e *EndToEndSuite) TestDisallowsHostsNotOnList() {
 func (e *EndToEndSuite) TestDisallowsTooLargeFrames() {
 	e.makeServer(echo)
 	cnx := e.connectSocket()
-	e.expectWriteError(cnx, 0xffff, `"`+strings.Repeat("hello", 1024*1024)+`"`, "write")
+	e.expectWriteError(cnx, 0xffff, `{"method":"`+strings.Repeat("hello", 1024*1024)+`"}`, "write")
 }
 
 func (e *EndToEndSuite) TestMultiplexes() {

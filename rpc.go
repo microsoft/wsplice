@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"io"
-	"io/ioutil"
 
 	"github.com/gobwas/ws"
 )
@@ -26,13 +25,8 @@ type RPC struct {
 // ReadMethodCall reads a Method off the reader, returning an error or the
 // unmarshaled method call.
 func (r *RPC) ReadMethodCall(sr io.Reader) (Method, error) {
-	data, err := ioutil.ReadAll(sr)
-	if err != nil {
-		return Method{}, err
-	}
-
 	var method Method
-	if err := json.Unmarshal(data, &method); err != nil {
+	if err := json.NewDecoder(sr).Decode(&method); err != nil {
 		return Method{}, BadJSON
 	}
 

@@ -78,8 +78,6 @@ type Session struct {
 
 func (s *Session) Start() {
 	logrus.WithFields(logrus.Fields{"id": s.id}).Infof("created new session")
-	defer logrus.WithFields(logrus.Fields{"id": s.id}).Infof("client session ended")
-	defer s.Close()
 
 	var (
 		err         error
@@ -93,13 +91,13 @@ func (s *Session) Start() {
 
 		if header, err = s.ReadNextFrame(); err != nil {
 			s.closeAll(ws.StatusAbnormalClosure, "Invalid socket header")
-			return
+			break
 		}
 		frameReader.N = header.Length
 
 		if header.OpCode == ws.OpClose {
 			s.dispatchClose(header, frameReader)
-			return
+			break
 		}
 
 		if header.OpCode != ws.OpContinuation {
@@ -114,6 +112,13 @@ func (s *Session) Start() {
 			s.handleError(err)
 		}
 	}
+
+	if target != nil {
+		target.Close()
+	}
+
+	logrus.WithFields(logrus.Fields{"id": s.id}).Infof("client session ended")
+	s.Close()
 }
 
 // readOpNumber reads the operation number off the upcoming websocket frame.
@@ -129,7 +134,7 @@ func (s *Session) createTarget(header *ws.Header, frame io.Reader) (Target, erro
 	index := int(binary.BigEndian.Uint16(opBytes[:]))
 
 	if index == controlIndex {
-		return &RPCTarget{s}, nil
+		return NewRPCTarget(s.readCopyBuffer, s), nil
 	}
 
 	cnx := s.GetConnection(index)
@@ -137,7 +142,7 @@ func (s *Session) createTarget(header *ws.Header, frame io.Reader) (Target, erro
 		return nil, UnknownConnection
 	}
 
-	return &ConnectionTarget{s.readCopyBuffer, cnx}, nil
+	return &ConnectionTarget{cnx}, nil
 }
 
 // dispatchClose reads the upcoming signalClosed frame off the socket and broadcasts
