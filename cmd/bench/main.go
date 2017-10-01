@@ -92,7 +92,7 @@ func BenchmarkLatency() {
 			atomic.StoreInt64(&stopped, 1)
 			wg.Wait()
 
-			final := float64(latency/int64(time.Microsecond)) / float64(samples)
+			final := float64(latency/int64(time.Microsecond)) / float64(samples) / 2
 			fmt.Printf("clients=%d, payload=%db, latency=%.1fus\n", clientsCount, len(payload), final)
 		}
 
