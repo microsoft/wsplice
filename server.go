@@ -101,6 +101,9 @@ func (s *Session) Start() {
 		}
 
 		if header.OpCode != ws.OpContinuation {
+			if target != nil {
+				target.Close()
+			}
 			target, err = s.createTarget(&header, frameReader)
 			if err != nil {
 				s.handleError(err)
